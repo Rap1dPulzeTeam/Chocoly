@@ -17,4 +17,10 @@ void read_button();
 void read_encoder();
 void read_keypad();
 
+
+void TaskKeypad( void *pvParameters );
+void TaskOLED( void *pvParameters );
+void TaskEncoder( void *pvParameters );
+void TaskButton( void *pvParameters );
+
 #endif //CHOCOLY_MAIN_H

@@ -1,7 +1,8 @@
 #include <Arduino.h>
+#include <FreeRTOS.h>
 #include <U8g2lib.h>
 #include <Versatile_RotaryEncoder.h>
-#include "Adafruit_Keypad.h"
+#include "keypad.h"
 #include "key.h"
 #include "encoder.h"
 #include "main.h"
@@ -16,7 +17,7 @@
 
 
 U8G2_SSD1306_128X64_NONAME_1_SW_I2C u8g2(U8G2_R0, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA, /* reset=*/ U8X8_PIN_NONE);
-Adafruit_Keypad customKeypad = Adafruit_Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+Keypad kpd = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 
 
 TwoWire I2Cone = TwoWire(0);
@@ -27,22 +28,60 @@ Versatile_RotaryEncoder *encoder_2;
 Versatile_RotaryEncoder *encoder_3;
 Versatile_RotaryEncoder *encoder_4;
 
+//TaskHandle_t keypad_read_task_handle;
+//TaskHandle_t OLED_Read_Task_Handle;
+
 //管理encoder的值
 int encoder_value[8] = {0};
+
 
 void setup() {
     Serial.begin(115200);
     init_button();
     encoder_init();
-    customKeypad.begin();
     u8g2.begin();
+    u8g2.firstPage();
+    xTaskCreate(
+            TaskEncoder
+            ,  "Task Encoder" // A name just for humans
+            ,  10000        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+            ,  nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+            ,  1  // Priority
+            ,  nullptr // Task handle is not used here - simply pass NULL
+    );
+    xTaskCreate(
+            TaskOLED
+            ,  "Task OLED" // A name just for humans
+            ,  10000        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+            ,  nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+            ,  2  // Priority
+            ,  nullptr // Task handle is not used here - simply pass NULL
+    );
+    xTaskCreate(
+            TaskButton
+            ,  "Task Button" // A name just for humans
+            ,  4096        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+            ,  nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+            ,  1  // Priority
+            ,  nullptr // Task handle is not used here - simply pass NULL
+    );
+    xTaskCreate(
+            TaskKeypad
+            ,  "Task Keypad" // A name just for humans
+            ,  4096        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+            ,  nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+            ,  1  // Priority
+            ,  nullptr // Task handle is not used here - simply pass NULL
+    );
+
 }
 
 void loop() {
-    show_oled();
-    read_button();
-    read_encoder();
-    read_keypad();
+    delay(10000);
+    //show_oled();
+    //read_button();
+    //read_encoder();
+    //read_keypad();
 }
 
 void init_button(){
@@ -81,11 +120,9 @@ void handlePress(){
 
 void handleRotate(int8_t rotation) {
     if (rotation > 0){
-        Serial.println("Right");
         encoder_direct = 1;
     }
     else{
-        Serial.println("Left");
         encoder_direct = -1;
     }
 }
@@ -104,6 +141,7 @@ void encoder_init(){
 //    encoder_2->setHandlePress(handlePress);
 //    encoder_3->setHandlePress(handlePress);
 //    encoder_4->setHandlePress(handlePress);
+    Serial.println("Encoder OK!");
 }
 
 void read_encoder(){
@@ -129,44 +167,145 @@ void read_encoder(){
     }
 }
 
+
+
+void read_button(){
+    PCF8574::DigitalInput di = pcf8574.digitalReadAll();
+//    Serial.print("READ VALUE FROM PCF P1: ");
+//    Serial.print(di.p0);
+//    Serial.print(" - ");
+//    Serial.print(di.p1);
+//    Serial.print(" - ");
+//    Serial.print(di.p2);
+//    Serial.print(" - ");
+//    Serial.println(di.p3);
+//    Serial.print(di.p4);
+//    Serial.print(" - ");
+//    Serial.print(di.p5);
+//    Serial.print(" - ");
+//    Serial.print(di.p6);
+//    Serial.print(" - ");
+//    Serial.println(di.p7);
+}
+
+
+
 void show_oled(){
-    u8g2.firstPage();
     u8g2.drawHLine(0,0,10);
     u8g2.drawHLine(0,31,10);
 
     u8g2.setFont(u8g2_font_ncenB10_tr);
     u8g2.drawStr(0,24,"Hello World!");
     u8g2.nextPage();
-    //delay(1000);
 }
 
-void read_button(){
-    PCF8574::DigitalInput di = pcf8574.digitalReadAll();
-    Serial.print("READ VALUE FROM PCF P1: ");
-    Serial.print(di.p0);
-    Serial.print(" - ");
-    Serial.print(di.p1);
-    Serial.print(" - ");
-    Serial.print(di.p2);
-    Serial.print(" - ");
-    Serial.println(di.p3);
-    Serial.print(di.p4);
-    Serial.print(" - ");
-    Serial.print(di.p5);
-    Serial.print(" - ");
-    Serial.print(di.p6);
-    Serial.print(" - ");
-    Serial.println(di.p7);
+//void TaskKeypad( void *pvParameters ){
+//    for(;;){
+//        read_keypad();
+//        delay(10);
+//    }
+//}
+//
+//
+//void TaskOLED( void *pvParameters ){
+//
+//    for(;;){
+//        u8g2.drawHLine(0,0,10);
+//        u8g2.drawHLine(0,31,10);
+//
+//        u8g2.setFont(u8g2_font_ncenB10_tr);
+//        u8g2.drawStr(0,24,"Hello World!");
+//        u8g2.nextPage();
+//        delay(10);
+//    }
+//}
+
+void TaskEncoder( void *pvParameters ){
+    for(;;){
+        if (encoder_1->ReadEncoder()) {
+            output_value(0,encoder_direct);
+            encoder_direct = 0;
+        }
+
+        if (encoder_2->ReadEncoder()) {
+            output_value(1,encoder_direct);
+            encoder_direct = 0;
+        }
+
+        if (encoder_3->ReadEncoder()) {
+            output_value(2,encoder_direct);
+            encoder_direct = 0;
+        }
+
+        if (encoder_4->ReadEncoder()) {
+            output_value(3,encoder_direct);
+            encoder_direct = 0;
+        }
+        delay(1);
+    }
+}
+void TaskOLED( void *pvParameters ){
+    u8g2.firstPage();
+    for(;;){
+        u8g2.drawHLine(0,0,10);
+        u8g2.drawHLine(0,31,10);
+
+        u8g2.setFont(u8g2_font_ncenB10_tr);
+        u8g2.drawStr(0,24,"Hello World!");
+        u8g2.nextPage();
+        delay(10);
+    }
 }
 
-void read_keypad(){
-    // put your main code here, to run repeatedly:
-    customKeypad.tick();
+void TaskButton( void *pvParameters ){
+    for(;;) {
+        read_button();
+        delay(100);
+    }
+}
 
-    while(customKeypad.available()){
-        keypadEvent e = customKeypad.read();
-        Serial.print((char)e.bit.KEY);
-        if(e.bit.EVENT == KEY_JUST_PRESSED) Serial.println(" pressed");
-        else if(e.bit.EVENT == KEY_JUST_RELEASED) Serial.println(" released");
+void TaskKeypad( void *pvParameters ){
+    unsigned long loopCount;
+    unsigned long startTime;
+    String msg;
+    loopCount = 0;
+    startTime = millis();
+    msg = "";
+    for(;;){
+        loopCount++;
+        if ( (millis()-startTime)>5000 ) {
+            Serial.print("Average loops per second = ");
+            Serial.println(loopCount/5);
+            startTime = millis();
+            loopCount = 0;
+        }
+
+        // Fills kpd.key[ ] array with up-to 10 active keys.
+        // Returns true if there are ANY active keys.
+        if (kpd.getKeys())
+        {
+            for (int i=0; i<LIST_MAX; i++)   // Scan the whole key list.
+            {
+                if ( kpd.key[i].stateChanged )   // Only find keys that have changed state.
+                {
+                    switch (kpd.key[i].kstate) {  // Report active key state : IDLE, PRESSED, HOLD, or RELEASED
+                        case PRESSED:
+                            msg = " PRESSED.";
+                            break;
+                        case HOLD:
+                            msg = " HOLD.";
+                            break;
+                        case RELEASED:
+                            msg = " RELEASED.";
+                            break;
+                        case IDLE:
+                            msg = " IDLE.";
+                    }
+                    Serial.print("Key ");
+                    Serial.print(kpd.key[i].kchar);
+                    Serial.println(msg);
+                }
+            }
+        }
     }
 }
