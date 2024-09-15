@@ -21,11 +21,11 @@
 
 SemaphoreHandle_t xMutex;
 
-U8G2_SSD1306_128X64_NONAME_1_SW_I2C u8g2(U8G2_R0, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA, /* reset=*/ U8X8_PIN_NONE);
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
 Keypad kpd = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 
-TwoWire I2Cone = TwoWire(0);
+TwoWire I2Cone = TwoWire(1);
 PCF8574 pcf8574(&I2Cone, 0x20);
 
 Versatile_RotaryEncoder *encoder_1;
@@ -39,6 +39,7 @@ Versatile_RotaryEncoder *encoder_4;
 //管理encoder的值
 int encoder_value[8] = {0};
 char* strshow = "helloworld!";
+display_event display_string = {1, "hello_world!", "", 0,0};
 
 
 
@@ -56,7 +57,7 @@ void setup() {
     Serial.begin(115200);
     init_button();
     encoder_init();
-
+    u8g2.begin();
 
     QueueHandle = xQueueCreate(100, sizeof(Event_t));
     //OLEDQueueHandle = xQueueCreate(100, sizeof(Event_t));
@@ -108,20 +109,80 @@ void setup() {
             , nullptr // Task handle is not used here - simply pass NULL
     );
 
-    u8g2.begin();
+
 }
 
-void drawURL(void)
+//几种屏幕显示事件：
+//0：无动作
+//1：文字
+//2：进度条
+
+//当为2的时候判断为编码器事件
+
+bool menu_flag = false;
+void drawinfo(void)
 {
-    u8g2.setFont(u8g2_font_inb16_mf);
-    u8g2.drawStr(1,30,strshow);
+    char buffer[50];
+    u8g2.setFont(u8g2_font_6x10_tf);
+    //u8g2.drawStr(1,30,strshow);
+    if(menu_flag){
+        u8g2.drawStr(1, 50, "menu in");
+    }
+    switch (display_string.type) {
+//        case 0:
+//            u8g2.drawStr(1, 30, display_string.line.c_str());
+//            break;
+        case 0:
+            display_string.name = "key";
+            snprintf(buffer, sizeof(buffer), "%s: %d", display_string.name.c_str(), display_string.number);
+            u8g2.drawStr(1, 30, buffer);
+            if(display_string.value == 1){
+
+                u8g2.drawStr(1, 40, "pressed");
+            }
+            else {
+                u8g2.drawStr(1, 40, "released");
+            }
+
+            break;
+
+        case 1:
+            display_string.name = "button";
+            snprintf(buffer, sizeof(buffer), "%s: %d", display_string.name.c_str(), display_string.number);
+            u8g2.drawStr(1, 30, buffer);
+            if(display_string.value == 0){
+                u8g2.drawStr(1, 40, "pressed");
+            }
+            else {
+                // 打印释放时间
+                u8g2.drawStr(1, 40, "released");
+            }
+
+            break;
+
+        case 2:  //测试 编码器使用
+            display_string.name = "knob";
+            snprintf(buffer, sizeof(buffer), "%s: %d", display_string.name.c_str(), display_string.number);
+            u8g2.drawStr(1, 30, buffer);
+            if(display_string.value == 1){
+                u8g2.drawStr(1, 40, "left");
+            }
+            else if(display_string.value == -1){
+                u8g2.drawStr(1, 40, "right");
+            }
+            break;
+        default:
+            u8g2.drawStr(1, 30, display_string.line.c_str());
+
+            break;
+    }
 }
 
 void loop() {
     u8g2.firstPage();
     do {
-        xSemaphoreTake(xMutex, 200);
-        drawURL();
+        xSemaphoreTake(xMutex, 10);
+        drawinfo();
         xSemaphoreGive(xMutex);
     } while ( u8g2.nextPage() );
     delay(10);
@@ -386,7 +447,6 @@ void TaskEncoder(void *pvParameters) {
 
         if (encoder_2->ReadEncoder()) {
             QSend(ENCODER_TYPE, 1, encoder_direct);
-
             encoder_direct = 0;
         }
 
@@ -403,21 +463,14 @@ void TaskEncoder(void *pvParameters) {
     }
 }
 
-void TaskOLED(void *pvParameters) {
-    u8g2.firstPage();
-    char tempStr[100];
-    for (;;) {
-
-        delay(50);
-    }
-}
-
 void TaskButton(void *pvParameters) {
     for (;;) {
         read_button();
         delay(10);
     }
 }
+
+
 
 void TaskKeypad(void *pvParameters) {
     String msg;
@@ -478,6 +531,13 @@ void QSend(int type, int num, int event) {
 //    }
 }
 
+void event_send(Event_t event_temp){
+
+}
+
+//按键统计次数
+int menu_button_pressed;
+unsigned long pressed_time;
 void TaskReadEvent( void *pvParameters ){
     for(;;){
         Event_t event_temp;
@@ -490,14 +550,48 @@ void TaskReadEvent( void *pvParameters ){
             }
         }
 
-
+        //处理事件在这里，调用midi输出也是在这里。
         if(event_temp.type != -1){
             // 使用 sprintf 将 Event_t 的内容格式化并存储到字符串中
             char tempStr[100];
-            // 使用 sprintf 将 Event_t 的内容格式化并存储到临时字符串中
-            sprintf(tempStr, "t%d|n%d|e%d", event_temp.type, event_temp.num,event_temp.event);
+
+            if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_PRESSED_EVENT){
+                pressed_time = millis();
+                switch (event_temp.num) {
+                    case 0:
+                        break;
+                    case 1:
+                        break;
+                    case 2:
+                        break;
+                    case 3:
+                        break;
+                    case 4:
+                        break;
+                    case 5:
+                        break;
+                    case 6:
+                        break;
+                    case 7:
+                        break;
+                    default:
+                        break;
+                }
+            }
+            else if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_RELEASED_EVENT){
+                if(millis() - pressed_time < 500){
+                    menu_button_pressed++;
+                }
+                Serial.print(menu_button_pressed);
+                if(menu_button_pressed >= 3){
+                    menu_flag = !menu_flag;
+                    menu_button_pressed = 0;
+                }
+            }
             xSemaphoreTake(xMutex, portMAX_DELAY);
-            strshow = tempStr;
+            display_string.type = event_temp.type;
+            display_string.number = event_temp.num;
+            display_string.value = event_temp.event;
             xSemaphoreGive(xMutex);
 
             Serial.print("Event type: ");
@@ -508,28 +602,7 @@ void TaskReadEvent( void *pvParameters ){
             Serial.println(event_temp.event);
         }
 
-        delay(50);
+        //delay(10);
 
     }
-}
-
-Event_t QRecv() {
-    Event_t event_temp;
-    if (QueueHandle != NULL) { // Sanity check just to make sure the queue actually exists
-        int ret = xQueueReceive(QueueHandle, &event_temp, portMAX_DELAY);
-        if (ret == pdPASS) {
-            return event_temp;
-        }
-            // The item is queued by copy, not by reference, so lets free the buffer after use.
-        else if (ret == pdFALSE) {
-            Serial.println("The `TaskWriteToSerial` was unable to receive data from the Queue");
-
-        }
-//    else{
-//        delay(100);
-//    }
-    }
-        return event_temp = {
-                -1,-1,-1
-        };
 }

@@ -24,6 +24,19 @@ typedef struct {
     int current_sta;
 } key_event;
 
+//几种屏幕显示事件：
+//0：无动作
+//1：文字
+//2：进度条
+//value可以对应事件或者是显示的进度
+typedef struct {
+    int type;
+    String line;
+    String name;
+    int number;
+    int value;
+} display_event;
+
 void init_button();
 void show_oled();
 void encoder_init();
@@ -96,6 +109,12 @@ typedef struct{
 #define BUTTON_PRESSED_EVENT 0
 #define BUTTON_RELEASED_EVENT 1
 
+#define UIMOD_NORMAL 0
+#define UIMOD_CHANGE_KEYPAGE 1
+#define UIMOD_CHANGE_KNOBPAGE 2
+#define UIMOD_CHANGE_SETTINGS 3
+//如果启用了菜单则关闭
+#define UIMOD_DISABLE 4
 
 
 #endif //CHOCOLY_MAIN_H
