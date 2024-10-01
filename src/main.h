@@ -94,6 +94,31 @@ typedef struct{
 //2：
 //左转，右转
 
+//CC CONTROL
+struct knob{
+    //control number
+    int num;
+    //control value
+    int value;
+    //control channel
+    int channel;
+};
+
+//NOTE CONTROL
+struct keypad{
+    int channel;
+    int note;
+    int velocity;
+};
+
+//CC CONTROL
+struct button{
+    int channel;
+    int note;
+    int velocity;
+};
+
+
 #define KEYPAD_TYPE 0
 #define BUTTON_TYPE 1
 #define ENCODER_TYPE 2
@@ -115,6 +140,7 @@ typedef struct{
 #define UIMOD_CHANGE_SETTINGS 3
 //如果启用了菜单则关闭
 #define UIMOD_DISABLE 4
+
 
 
 #endif //CHOCOLY_MAIN_H

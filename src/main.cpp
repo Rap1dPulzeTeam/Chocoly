@@ -6,6 +6,7 @@
 #include "key.h"
 #include "encoder.h"
 #include "main.h"
+#include "midi.h"
 #include "../lib/PCF8574_library/PCF8574.h"
 
 #ifdef U8X8_HAVE_HW_SPI
@@ -41,9 +42,29 @@ int encoder_value[8] = {0};
 char* strshow = "helloworld!";
 display_event display_string = {1, "hello_world!", "", 0,0};
 
+//全局变量,KEYPAD,KNOB等变量, 一共8页
+keypad keypad_bank[16][8];
+knob knob_bank[4][8];
+button button_bank[8][8];
+
+int current_keypad_page = 0;
+int current_knob_page = 0;
+int current_button_page = 0;
+
+//初始化，正常情况下会读取SPIFFS读取先前保存的数据，如果没有数据，则默认为0
+void bank_int();
+
+//全局变量，是否进入菜单
+bool menu_flag = false;
+//用于菜单，选择当前激活的PAD
+int menu_key_selected = 0;
+//用于菜单，选择当前激活的KNOB
+int menu_knob_selected = 0;
+//用于菜单，选择当前激活的BUTTON
+int menu_button_selected = 0;
 
 
-/*船新版本*/
+
 /*-------------------------------------*/
 /*   事件队列的逻辑：
  * 1、识别按键\编码器\按钮事件
@@ -119,7 +140,7 @@ void setup() {
 
 //当为2的时候判断为编码器事件
 
-bool menu_flag = false;
+
 void drawinfo(void)
 {
     char buffer[50];
@@ -128,6 +149,7 @@ void drawinfo(void)
     if(menu_flag){
         u8g2.drawStr(1, 50, "menu in");
     }
+    //普通模式显示，绝大多数的逻辑在TaskReadEvent，这里只负责显示
     switch (display_string.type) {
 //        case 0:
 //            u8g2.drawStr(1, 30, display_string.line.c_str());
@@ -176,6 +198,7 @@ void drawinfo(void)
 
             break;
     }
+    //菜单模式，绝大多数的按键都作为事件进入，处理事件的逻辑在这里
 }
 
 void loop() {
@@ -513,27 +536,271 @@ void TaskKeypad(void *pvParameters) {
 }
 
 
-void QSend(int type, int num, int event) {
-    if (QueueHandle != NULL && uxQueueSpacesAvailable(QueueHandle) > 0) {
-        Event_t event_d;
-        event_d.event = event;
-        event_d.num = num;
-        event_d.type = type;
-
-        int ret = xQueueSend(QueueHandle, (void *) &event_d, 0);
-        if (ret == pdTRUE) {
-        } else if (ret == errQUEUE_FULL) {
-            Serial.println("unable to send data");
-        }
-    }
-//    else{
-//        delay(100);
+//void QSend(int type, int num, int event) {
+//    if (QueueHandle != NULL && uxQueueSpacesAvailable(QueueHandle) > 0) {
+//        Event_t event_d;
+//        event_d.event = event;
+//        event_d.num = num;
+//        event_d.type = type;
+//
+//        int ret = xQueueSend(QueueHandle, (void *) &event_d, 0);
+//        if (ret == pdTRUE) {
+//        } else if (ret == errQUEUE_FULL) {
+//            Serial.println("unable to send data");
+//        }
 //    }
+////    else{
+////        delay(100);
+////    }
+//}
+
+////全局变量,KEYPAD,KNOB等变量, 一共8页
+//keypad keypad_bank[16][8];
+//knob knob_bank[4][8];
+//button button_bank[8][8];
+
+void midi_send_note(int channel, int note, int velocity,int onoff) {
+    // 输出伪造的MIDI发送信息，用于调试或展示
+    printf("MIDI Send: Channel: %d, Note: %d, Velocity: %d\n", channel, note, velocity);
 }
 
-void event_send(Event_t event_temp){
-
+void midi_cc_send(int channel, int control_number, int value) {
+    // 输出伪造的MIDI CC发送信息，用于调试或展示
+    printf("MIDI CC Send: Channel: %d, Control Number: %d, Value: %d\n", channel, control_number, value);
 }
+
+//typedef struct {
+//    int type;
+//    int num;
+//    int event;
+//} Event_t;
+
+/*船新版本*/
+//编码器1按下的时候并旋转，选择PADPADGE  1
+//编码器2按下的时候并旋转，选择KNOBPAGE  1
+//编码器3按下的时候旋转，走带控制  1
+//编码器4按下的时候旋转，选择KEYPAGE    1
+
+
+//kepad_event
+Event_t handle_keypad_event(int num,int event) {
+    switch (event) {
+        case KEY_PRESSED_EVENT:
+            midi_send_note(keypad_bank[current_keypad_page][num].channel,
+                      keypad_bank[current_keypad_page][num].note,
+                      keypad_bank[current_keypad_page][num].velocity,
+                      1
+                      );
+            return (Event_t) {
+                .type = KEYPAD_TYPE,
+                .num = num,
+                .event = KEY_PRESSED_EVENT
+            };
+            break;
+        case KEY_RELEASED_EVENT:
+            midi_send_note(keypad_bank[current_keypad_page][num].channel,
+                           keypad_bank[current_keypad_page][num].note,
+                           keypad_bank[current_keypad_page][num].velocity,
+                           0
+            );
+            return (Event_t) {
+                    .type = KEYPAD_TYPE,
+                    .num = num,
+                    .event = KEY_RELEASED_EVENT
+            };
+            break;
+        default:
+            return (Event_t) {
+                    .type = -1,
+                    .num = 0,
+                    .event = 0
+            };
+    }
+}
+//正常模式，发送MIDI信号并显示在屏幕上
+void handle_encoder_normal_event(int num,int event) {
+    switch (event) {
+        case ENCODER_LEFT_EVENT:
+            knob_bank[current_keypad_page][num].value++;
+            midi_cc_send(knob_bank[current_keypad_page][num].channel,
+                         knob_bank[current_keypad_page][num].value,
+                         knob_bank[current_keypad_page][num].num
+            );
+            break;
+        case ENCODER_RIGHT_EVENT:
+            knob_bank[current_keypad_page][num].value--;
+            midi_cc_send(knob_bank[current_keypad_page][num].channel,
+                         knob_bank[current_keypad_page][num].value,
+                         knob_bank[current_keypad_page][num].num
+            );
+            break;
+    }
+}
+
+void handle_button_cc_event(int num,int event) {
+    //根据按钮编号执行不同操作，单步触发模式，实际上是只会发送一次播放或者是停止
+    switch (event) {
+        case BUTTON_PRESSED_EVENT:
+            midi_send_note(button_bank[current_keypad_page][num].channel,
+                           button_bank[current_keypad_page][num].note,
+                           button_bank[current_keypad_page][num].velocity,
+                           1
+            );
+            break;
+        case BUTTON_RELEASED_EVENT:
+            midi_send_note(button_bank[current_keypad_page][num].channel,
+                           button_bank[current_keypad_page][num].note,
+                           button_bank[current_keypad_page][num].velocity,
+                           0
+            );
+            break;
+    }
+}
+
+//根据按钮编号执行不同操作
+//按钮1：选择设置PAD
+//按钮2：选择设置编码器
+//按钮3：选择设置按钮
+int menu_setting_mode = 0;
+void handle_button_menu_event(int num, int event) {
+    // 检查按钮按下事件
+    if (event == BUTTON_PRESSED_EVENT) {
+        switch (num) {
+            case 1:  // 按钮1：选择设置PAD
+                menu_setting_mode = 1;  // 设置菜单模式为1表示设置PAD
+                printf("Menu mode: Set PAD\n");
+                break;
+            case 2:  // 按钮2：选择设置编码器
+                menu_setting_mode = 2;  // 设置菜单模式为2表示设置编码器
+                printf("Menu mode: Set Encoder\n");
+                break;
+            case 3:  // 按钮3：选择设置按钮
+                menu_setting_mode = 3;  // 设置菜单模式为3表示设置按钮
+                printf("Menu mode: Set Button\n");
+                break;
+            default:
+                printf("Invalid button number.\n");
+                break;
+        }
+    } else if (event == BUTTON_RELEASED_EVENT) {
+        // 如果需要在按钮释放时执行某些操作，可以在这里处理
+        printf("Button %d released.\n", num);
+    }
+}
+//用于菜单，选择当前激活的PAD
+//int menu_key_selected = 0;
+//用于菜单，选择当前激活的KNOB
+//int menu_knob_selected = 0;
+//用于菜单，选择当前激活的BUTTON
+//int menu_button_selected = 0;
+//按下某个按键选择，然后旋转旋钮A，实现选择NOTE值，旋转旋钮B，选择调整力度，旋转旋钮C，选择整体channel，旋转旋钮D，调整当前设置的页面
+void handle_encoder_menu_event(int num, int event){
+    switch (num) {
+        case 1:  // 操作PAD的选择
+//        if(menu_key_selected){
+//            if (event == ENCODER_LEFT_EVENT) {
+//
+//            } else if (event == ENCODER_RIGHT_EVENT) {
+//
+//            }
+//            printf("Current PAD selected: %d\n", menu_key_selected);
+//            break;
+//        }
+//
+
+        case 2:  // 操作KNOB的选择
+            if (event == ENCODER_LEFT_EVENT) {
+
+            } else if (event == ENCODER_RIGHT_EVENT) {
+
+            }
+            printf("Current KNOB selected: %d\n", menu_knob_selected);
+            break;
+
+        case 3:  // 操作BUTTON的选择
+            if (event == ENCODER_LEFT_EVENT) {
+
+            } else if (event == ENCODER_RIGHT_EVENT) {
+
+
+            }
+            printf("Current BUTTON selected: %d\n", menu_button_selected);
+            break;
+
+        default:
+            printf("Invalid encoder number: %d\n", num);
+            break;
+    }
+}
+
+//int current_keypad_page = 0;
+//int current_knob_page = 0;
+//int current_button_page = 0;
+
+// 编码器按下和旋转事件处理函数
+void handle_encoder_setpage_event(int num, int event) {
+    switch (num) {
+        case 1:
+            // 编码器1按下并旋转，选择PADPAGE
+            if (event == ENCODER_LEFT_EVENT) {  // 假设1表示按下
+                if (current_keypad_page < 8) {
+                    current_keypad_page++;
+                }
+            } else if (event == ENCODER_RIGHT_EVENT) {
+                if (current_keypad_page > 0) {
+                    current_keypad_page--;
+                }
+            }
+            break;
+
+        case 2:
+            // 编码器2按下并旋转，选择KNOBPAGE
+            if (event == ENCODER_LEFT_EVENT) {  // 假设1表示按下
+                if (current_keypad_page < 8) {
+                    current_knob_page++;
+                }
+            } else if (event == ENCODER_RIGHT_EVENT) {
+                if (current_keypad_page > 0) {
+                    current_knob_page--;
+                }
+            }
+            break;
+
+        case 3:
+            // 编码器3按下并旋转，控制走带
+            if (event == ENCODER_LEFT_EVENT) {  // 假设1表示按下
+                //发送走带控制往左
+            }
+            else if (event == ENCODER_RIGHT_EVENT) {
+                //发送走带控制往右
+            }
+            break;
+
+        case 4:
+            if (event == ENCODER_LEFT_EVENT) {  // 假设1表示按下
+                if (current_keypad_page < 8) {
+                    current_button_page++;
+                }
+            } else if (event == ENCODER_RIGHT_EVENT) {
+                if (current_keypad_page > 0) {
+                    current_button_page--;
+                }
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+//菜单键（按键4）连续按下5次，进入设置模式
+//按钮1：选择设置PAD  1
+//按钮2：选择设置编码器  1
+//按钮3：选择设置按钮  1
+//设置模式1：设置PAD的CC值
+//按下某个按键选择，然后旋转旋钮A，实现选择NOTE值，旋转旋钮B，选择调整力度，旋转旋钮C，选择整体channel，旋转旋钮D，调整当前设置的页面
+//设置模式2，设置编码器的CC值
+//设置模式3：设置编码器的CC值
 
 //按键统计次数
 int menu_button_pressed;
@@ -555,30 +822,35 @@ void TaskReadEvent( void *pvParameters ){
             // 使用 sprintf 将 Event_t 的内容格式化并存储到字符串中
             char tempStr[100];
 
+            //处理按钮事件
             if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_PRESSED_EVENT){
                 pressed_time = millis();
-                switch (event_temp.num) {
-                    case 0:
-                        break;
-                    case 1:
-                        break;
-                    case 2:
-                        break;
-                    case 3:
-                        break;
-                    case 4:
-                        break;
-                    case 5:
-                        break;
-                    case 6:
-                        break;
-                    case 7:
-                        break;
-                    default:
-                        break;
+
+                if(menu_flag){
+                    handle_button_menu_event(event_temp.num, event_temp.event);
+                }
+                else{
+                    //正常模式
+                    handle_button_cc_event(event_temp.num, event_temp.event);
                 }
             }
-            else if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_RELEASED_EVENT){
+            //处理键盘矩阵事件
+            else if(event_temp.type == KEYPAD_TYPE){
+                event_temp = handle_keypad_event(event_temp.num, event_temp.event);
+            }
+            //处理编码器事件
+            else if(event_temp.type == ENCODER_TYPE){
+                if(menu_flag){
+                    handle_encoder_menu_event(event_temp.num, event_temp.event);
+                }
+                else{
+                    handle_encoder_normal_event(event_temp.num, event_temp.event);
+                }
+            }
+
+
+            //按钮释放事件处理，这里只处理菜单进入逻辑
+            if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_RELEASED_EVENT){
                 if(millis() - pressed_time < 500){
                     menu_button_pressed++;
                 }
@@ -588,12 +860,16 @@ void TaskReadEvent( void *pvParameters ){
                     menu_button_pressed = 0;
                 }
             }
+            //传递显示数据
+            //获取互斥锁访问共享资源
             xSemaphoreTake(xMutex, portMAX_DELAY);
             display_string.type = event_temp.type;
             display_string.number = event_temp.num;
             display_string.value = event_temp.event;
+            //释放
             xSemaphoreGive(xMutex);
 
+            //打印事件信息
             Serial.print("Event type: ");
             Serial.print(event_temp.type);
             Serial.print(" Event num: ");
