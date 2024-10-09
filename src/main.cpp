@@ -42,17 +42,25 @@ int encoder_value[8] = {0};
 char* strshow = "helloworld!";
 display_event display_string = {1, "hello_world!", "", 0,0};
 
+//初始化，正常情况下会读取SPIFFS读取先前保存的数据，如果没有数据，则默认为0
 //全局变量,KEYPAD,KNOB等变量, 一共8页
-keypad keypad_bank[16][8];
-knob knob_bank[4][8];
-button button_bank[8][8];
+keypad keypad_bank[16][8] = {0};
+knob knob_bank[4][8] = {0};
+button button_bank[8][8] = {0};
 
 int current_keypad_page = 0;
 int current_knob_page = 0;
 int current_button_page = 0;
 
-//初始化，正常情况下会读取SPIFFS读取先前保存的数据，如果没有数据，则默认为0
-void bank_int();
+
+//用于设定普通模式下具体按下的按键，如果0，则没有按键按下，正常发送逻辑。
+//编码器1按下的时候并旋转，选择PADPADGE  1
+//编码器2按下的时候并旋转，选择KNOBPAGE  2
+//编码器3按下的时候旋转，走带控制  3
+//编码器4按下的时候旋转，选择KEYPAGE    4
+int normal_mod_set_type = 0;
+
+
 
 //全局变量，是否进入菜单
 bool menu_flag = false;
@@ -62,6 +70,8 @@ int menu_key_selected = 0;
 int menu_knob_selected = 0;
 //用于菜单，选择当前激活的BUTTON
 int menu_button_selected = 0;
+//用于菜单，选择当前激活的设置
+int menu_setting_mode = 0;
 
 
 
@@ -80,55 +90,55 @@ void setup() {
     encoder_init();
     u8g2.begin();
 
-    QueueHandle = xQueueCreate(100, sizeof(Event_t));
-    //OLEDQueueHandle = xQueueCreate(100, sizeof(Event_t));
-    xMutex = xSemaphoreCreateMutex();
-    // Check if the queue was successfully created
-    if(QueueHandle == NULL){
-        Serial.println("Queue could not be created. Halt.");
-        while(1) delay(1000); // Halt at this point as is not possible to continue
-    }
+//    QueueHandle = xQueueCreate(100, sizeof(Event_t));
+//    //OLEDQueueHandle = xQueueCreate(100, sizeof(Event_t));
+//    xMutex = xSemaphoreCreateMutex();
+//    // Check if the queue was successfully created
+//    if(QueueHandle == NULL){
+//        Serial.println("Queue could not be created. Halt.");
+//        while(1) delay(1000); // Halt at this point as is not possible to continue
+//    }
 
-    xTaskCreate(
-            TaskEncoder, "Task Encoder" // A name just for humans
-            ,
-            2048        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
-            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
-            , 1  // Priority
-            , nullptr // Task handle is not used here - simply pass NULL
-    );
 //    xTaskCreate(
-//            TaskOLED, "Task OLED" // A name just for humans
+//            TaskEncoder, "Task Encoder" // A name just for humans
 //            ,
 //            2048        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
 //            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
-//            , 2  // Priority
+//            , 1  // Priority
 //            , nullptr // Task handle is not used here - simply pass NULL
 //    );
-    xTaskCreate(
-            TaskButton, "Task Button" // A name just for humans
-            ,
-            2048        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
-            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
-            , 1  // Priority
-            , nullptr // Task handle is not used here - simply pass NULL
-    );
-    xTaskCreate(
-            TaskKeypad, "Task Keypad" // A name just for humans
-            ,
-            1024        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
-            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
-            , 1  // Priority
-            , nullptr // Task handle is not used here - simply pass NULL
-    );
-    xTaskCreate(
-            TaskReadEvent, "Task ReadEvent" // A name just for humans
-            ,
-            2048        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
-            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
-            , 1  // Priority
-            , nullptr // Task handle is not used here - simply pass NULL
-    );
+////    xTaskCreate(
+////            TaskOLED, "Task OLED" // A name just for humans
+////            ,
+////            2048        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+////            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+////            , 2  // Priority
+////            , nullptr // Task handle is not used here - simply pass NULL
+////    );
+//    xTaskCreate(
+//            TaskButton, "Task Button" // A name just for humans
+//            ,
+//            2048        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+//            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+//            , 1  // Priority
+//            , nullptr // Task handle is not used here - simply pass NULL
+//    );
+//    xTaskCreate(
+//            TaskKeypad, "Task Keypad" // A name just for humans
+//            ,
+//            1024        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+//            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+//            , 1  // Priority
+//            , nullptr // Task handle is not used here - simply pass NULL
+//    );
+//    xTaskCreate(
+//            TaskReadEvent, "Task ReadEvent" // A name just for humans
+//            ,
+//            4096        // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+//            , nullptr // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+//            , 1  // Priority
+//            , nullptr // Task handle is not used here - simply pass NULL
+//    );
 
 
 }
@@ -140,6 +150,197 @@ void setup() {
 
 //当为2的时候判断为编码器事件
 
+char items[4] = {'K', 'N', 'B', 'S'}; // 左侧菜单选项
+int selectedIndex = 3; // 当前选中的索引
+
+
+
+void menu_main_ui() {
+    // 绘制 "PAGE:1" 字符串在顶部
+    u8g2.setFont(u8g2_font_6x10_tf); // 使用更小的字体
+    u8g2.setCursor(20, 10); // 设置顶部文字坐标
+    u8g2.drawVLine(20, 0, 64); // 绘制垂直分隔线，从顶部到屏幕底部
+    for (int i = 0; i < 5; i++) {
+        if (i == selectedIndex) {
+            u8g2.setDrawColor(1); // 设置绘制颜色为白色
+            u8g2.drawBox(0, i * 16, 16, 16); // 画选中背景色块
+            u8g2.setDrawColor(0); // 设置绘制颜色为黑色
+            u8g2.setCursor(4, (i + 1) * 16 - 4); // 设置文字坐标
+            u8g2.print(items[i]); // 打印字母，反色显示
+        } else {
+            u8g2.setDrawColor(1); // 设置绘制颜色为白色
+            u8g2.setCursor(4, (i + 1) * 16 - 4); // 设置文字坐标
+            u8g2.print(items[i]); // 打印字母
+        }
+    }
+    u8g2.setCursor(0,0); // 设置文字坐标
+
+    // 绘制右侧内容，根据不同的选择显示不同的内容
+    if (selectedIndex == 0) {
+        // 如果选择了 'K'
+        u8g2.setFont(u8g2_font_5x8_tr); // 使用较小的字体
+        u8g2.setCursor(30, 14);
+        u8g2.print("K Page:");
+
+        // 绘制 4x4 的格子
+        int gridSize = 10;
+        for (int row = 0; row < 5; row++) {
+            for (int col = 0; col < 4; col++) {
+                u8g2.drawFrame(30 + col * gridSize, 20 + row * gridSize, gridSize, gridSize);
+            }
+        }
+        u8g2.setCursor(75, 28);
+        u8g2.print("ParamA: 5");
+        u8g2.setCursor(75, 36);
+        u8g2.print("ParamB: 15");
+        u8g2.setCursor(75, 44);
+        u8g2.print("ParamC: 25");
+        u8g2.setCursor(75, 52);
+        u8g2.print("ParamD: 25");
+
+    } else if (selectedIndex == 1) {
+        // 如果选择了 'N'
+        u8g2.setFont(u8g2_font_5x8_tr); // 使用较小的字体
+        u8g2.setCursor(30, 16);
+        u8g2.print("N Page:");
+
+        // 绘制四个圆圈，及其参数
+        int circleRadius = 4;
+        for (int i = 0; i < 4; i++) {
+            u8g2.drawCircle(32 + i * 16, 30, circleRadius);
+        }
+        u8g2.setCursor(30, 48);
+        u8g2.print("Param1: 10");
+        u8g2.setCursor(30, 56);
+        u8g2.print("Param2: 20");
+        u8g2.setCursor(30, 64);
+        u8g2.print("Param3: 30");
+    } else if (selectedIndex == 2) {
+        // 如果选择了 'B'
+        u8g2.setFont(u8g2_font_5x8_tr); // 使用较小的字体
+        u8g2.setCursor(30, 16);
+        u8g2.print("PAGE:");
+
+        // 绘制三个方形，及其参数，防止溢出屏幕
+        int boxSize = 10;
+        for (int i = 0; i < 3; i++) {
+            int x = 30 + i * 20;
+            int y = 25;
+            u8g2.drawFrame(x, y, boxSize, boxSize);
+        }
+        u8g2.setCursor(30, 48);
+        u8g2.print("ParamA: 5");
+        u8g2.setCursor(30, 56);
+        u8g2.print("ParamB: 15");
+        u8g2.setCursor(30, 64);
+        u8g2.print("ParamC: 25");
+    }
+    else if(selectedIndex == 3){
+        u8g2.setFont(u8g2_font_6x12_t_cyrillic); // 使用较小的字体
+        // 绘制菜单标题 "MENU"，并填充区域
+        u8g2.setDrawColor(1); // 设置绘制颜色为白色
+        u8g2.drawBox(30, 0, 98, 10); // 填充从 X 轴 30 到 128 的区域，高度为 16
+        u8g2.setDrawColor(0); // 设置文字颜色为黑色，确保文字可见
+        u8g2.setCursor(60, 8);
+        u8g2.print("MENU");
+        // 绘制菜单选项 A, B, C
+        u8g2.setDrawColor(1); // 恢复绘制颜色为白色
+        u8g2.setCursor(30, 22);
+        u8g2.print("Option A");
+        u8g2.setCursor(30, 32);
+        u8g2.print("Option B");
+        u8g2.setCursor(30, 42);
+        u8g2.print("Option C");
+// 假设有一个变量 selectedOption 表示当前选中的选项 (A=0, B=1, C=2)
+        int selectedOption = 1; // 示例值，假设当前选中了 Option B
+
+// 绘制选中选项的方框标注
+        switch (selectedOption) {
+            case 0: // 选中 Option A
+                u8g2.drawFrame(58, 24, 70, 12); // 绘制选中框
+                break;
+            case 1: // 选中 Option B
+                u8g2.drawFrame(28, 34, 70, 10); // 绘制选中框
+                break;
+            case 2: // 选中 Option C
+                u8g2.drawFrame(58, 40, 70, 12); // 绘制选中框
+                break;
+        }
+
+    }
+}
+
+
+void draw_knob(void)
+{
+
+    // 绘制 "PAGE:1" 字符串在顶部
+    u8g2.setFont(u8g2_font_6x10_tf); // 使用更小的字体
+    u8g2.drawStr(0, 8, "PAGE:1");
+
+    // 进度条数值
+    int knob1_value = knob_bank[current_keypad_page][0].value;  // 进度条值
+    int knob2_value = knob_bank[current_keypad_page][1].value;
+    int knob3_value = knob_bank[current_keypad_page][2].value;
+    int knob4_value = knob_bank[current_keypad_page][3].value;
+
+    // KNOB1
+    u8g2.drawStr(0, 22, "KNOB1:");
+    u8g2.drawFrame(40, 14, 80, 8);      // 绘制进度条框架
+    u8g2.drawBox(40, 14, knob1_value, 8); // 绘制进度条
+
+    // 绘制数值（反色处理）
+    if (knob1_value >= 20) {
+        u8g2.setDrawColor(0); // 设置反色
+        u8g2.drawStr(40 + knob1_value - 15, 22, String(knob1_value).c_str());
+        u8g2.setDrawColor(1); // 恢复正常颜色
+    } else {
+        u8g2.drawStr(40 + knob1_value + 5, 22, String(knob1_value).c_str());
+    }
+
+    // KNOB2
+    u8g2.drawStr(0, 34, "KNOB2:");
+    u8g2.drawFrame(40, 26, 80, 8);      // 绘制进度条框架
+    u8g2.drawBox(40, 26, knob2_value, 8); // 绘制进度条
+
+    // 绘制数值（反色处理）
+    if (knob2_value >= 20) {
+        u8g2.setDrawColor(0); // 设置反色
+        u8g2.drawStr(40 + knob2_value - 15, 34, String(knob2_value).c_str());
+        u8g2.setDrawColor(1); // 恢复正常颜色
+    } else {
+        u8g2.drawStr(40 + knob2_value + 5, 34, String(knob2_value).c_str());
+    }
+
+    // KNOB3
+    u8g2.drawStr(0, 46, "KNOB3:");
+    u8g2.drawFrame(40, 38, 80, 8);      // 绘制进度条框架
+    u8g2.drawBox(40, 38, knob3_value, 8); // 绘制进度条
+
+    // 绘制数值（反色处理）
+    if (knob3_value >= 20) {
+        u8g2.setDrawColor(0); // 设置反色
+        u8g2.drawStr(40 + knob3_value - 15, 46, String(knob3_value).c_str());
+        u8g2.setDrawColor(1); // 恢复正常颜色
+    } else {
+        u8g2.drawStr(40 + knob3_value + 5, 46, String(knob3_value).c_str());
+    }
+
+    // KNOB4
+    u8g2.drawStr(0, 58, "KNOB4:");
+    u8g2.drawFrame(40, 50, 80, 8);      // 绘制进度条框架
+    u8g2.drawBox(40, 50, knob4_value, 8); // 绘制进度条
+
+    // 绘制数值（反色处理）
+    if (knob4_value >= 20) {
+        u8g2.setDrawColor(0); // 设置反色
+        u8g2.drawStr(40 + knob4_value - 15, 58, String(knob4_value).c_str());
+        u8g2.setDrawColor(1); // 恢复正常颜色
+    } else {
+        u8g2.drawStr(40 + knob4_value + 5, 58, String(knob4_value).c_str());
+    }
+
+}
 
 void drawinfo(void)
 {
@@ -184,14 +385,51 @@ void drawinfo(void)
 
         case 2:  //测试 编码器使用
             display_string.name = "knob";
-            snprintf(buffer, sizeof(buffer), "%s: %d", display_string.name.c_str(), display_string.number);
-            u8g2.drawStr(1, 30, buffer);
+            if(normal_mod_set_type == NORMALMOD){
+                draw_knob();
+            }
+            else {
+                switch(normal_mod_set_type){
+                    case NORMALMOD_SET_KNOBPAGE:
+                        u8g2.drawStr(1, 20, "Change knob page:");
+                        u8g2.drawStr(1, 40, "left");
+                        break;
+                    case NORMALMOD_SET_PADPAGE:
+                        u8g2.drawStr(1, 20, "Change pad page:");
+                        u8g2.drawStr(1, 40, "left");
+                        break;
+                    case NORMALMOD_SET_TRACK_CONTROL:
+                        u8g2.drawStr(1, 20, "track:");
+                        //左转
+                        if(display_string.value == 1){
+                            u8g2.drawStr(1, 40, "left");
+                        }
+                            //右转
+                        else if(display_string.value == -1){
+                            u8g2.drawStr(1, 40, "right");
+                        }
+                        break;
+                    case NORMALMOD_SET_KEYPAGE:
+                        u8g2.drawStr(1, 20, "Change key page:");
+                        u8g2.drawStr(1, 40, "left");
+                        break;
+
+                }
+            }
+
+            //snprintf(buffer, sizeof(buffer), "%s: %d", display_string.name.c_str(), display_string.number);
+            //u8g2.drawStr(1, 30, buffer);
+            //char buffer[20]; // 用于存储格式化后的字符串
+            //sprintf(buffer, "value:%d", display_string.value);
+            //u8g2.drawStr(1, 40, buffer);
+            /*
             if(display_string.value == 1){
                 u8g2.drawStr(1, 40, "left");
             }
             else if(display_string.value == -1){
                 u8g2.drawStr(1, 40, "right");
             }
+            */
             break;
         default:
             u8g2.drawStr(1, 30, display_string.line.c_str());
@@ -204,9 +442,11 @@ void drawinfo(void)
 void loop() {
     u8g2.firstPage();
     do {
-        xSemaphoreTake(xMutex, 10);
-        drawinfo();
-        xSemaphoreGive(xMutex);
+        //xSemaphoreTake(xMutex, 10);
+        //drawinfo();
+        //draw_knob();
+        menu_main_ui();
+        //xSemaphoreGive(xMutex);
     } while ( u8g2.nextPage() );
     delay(10);
     //show_oled();
@@ -244,9 +484,6 @@ void output_value(int num, int direct) {
     Serial.printf("Encoder %d value:%d", num, encoder_value[num]);
 }
 
-void handlePress() {
-
-}
 
 void handleRotate(int8_t rotation) {
     if (rotation > 0) {
@@ -536,23 +773,23 @@ void TaskKeypad(void *pvParameters) {
 }
 
 
-//void QSend(int type, int num, int event) {
-//    if (QueueHandle != NULL && uxQueueSpacesAvailable(QueueHandle) > 0) {
-//        Event_t event_d;
-//        event_d.event = event;
-//        event_d.num = num;
-//        event_d.type = type;
-//
-//        int ret = xQueueSend(QueueHandle, (void *) &event_d, 0);
-//        if (ret == pdTRUE) {
-//        } else if (ret == errQUEUE_FULL) {
-//            Serial.println("unable to send data");
-//        }
+void QSend(int type, int num, int event) {
+    if (QueueHandle != NULL && uxQueueSpacesAvailable(QueueHandle) > 0) {
+        Event_t event_d;
+        event_d.event = event;
+        event_d.num = num;
+        event_d.type = type;
+
+        int ret = xQueueSend(QueueHandle, (void *) &event_d, 0);
+        if (ret == pdTRUE) {
+        } else if (ret == errQUEUE_FULL) {
+            Serial.println("unable to send data");
+        }
+    }
+//    else{
+//        delay(100);
 //    }
-////    else{
-////        delay(100);
-////    }
-//}
+}
 
 ////全局变量,KEYPAD,KNOB等变量, 一共8页
 //keypad keypad_bank[16][8];
@@ -576,10 +813,7 @@ void midi_cc_send(int channel, int control_number, int value) {
 //} Event_t;
 
 /*船新版本*/
-//编码器1按下的时候并旋转，选择PADPADGE  1
-//编码器2按下的时候并旋转，选择KNOBPAGE  1
-//编码器3按下的时候旋转，走带控制  1
-//编码器4按下的时候旋转，选择KEYPAGE    1
+
 
 
 //kepad_event
@@ -618,23 +852,36 @@ Event_t handle_keypad_event(int num,int event) {
     }
 }
 //正常模式，发送MIDI信号并显示在屏幕上
-void handle_encoder_normal_event(int num,int event) {
+Event_t handle_encoder_normal_event(int num,int event) {
+    int value_temp = 0;
     switch (event) {
         case ENCODER_LEFT_EVENT:
-            knob_bank[current_keypad_page][num].value++;
+            if(knob_bank[current_keypad_page][num].value > 0){
+                knob_bank[current_keypad_page][num].value -= 1;
+            }
+            value_temp = knob_bank[current_keypad_page][num].value;
             midi_cc_send(knob_bank[current_keypad_page][num].channel,
                          knob_bank[current_keypad_page][num].value,
                          knob_bank[current_keypad_page][num].num
             );
             break;
         case ENCODER_RIGHT_EVENT:
-            knob_bank[current_keypad_page][num].value--;
+            if(knob_bank[current_keypad_page][num].value < 127){
+                knob_bank[current_keypad_page][num].value += 1;
+            }
+
+            value_temp = knob_bank[current_keypad_page][num].value;
             midi_cc_send(knob_bank[current_keypad_page][num].channel,
                          knob_bank[current_keypad_page][num].value,
                          knob_bank[current_keypad_page][num].num
             );
             break;
     }
+    return (Event_t) {
+            .type = ENCODER_EVENT_NORMAL,
+            .num = num,
+            .event = value_temp
+    };
 }
 
 void handle_button_cc_event(int num,int event) {
@@ -646,6 +893,11 @@ void handle_button_cc_event(int num,int event) {
                            button_bank[current_keypad_page][num].velocity,
                            1
             );
+//            return (Event_t) {
+//                    .type = BUTTON_EVENT_NORMAL,
+//                    .num = num,
+//                    .event = BUTTON_PRESSED_EVENT
+//            };
             break;
         case BUTTON_RELEASED_EVENT:
             midi_send_note(button_bank[current_keypad_page][num].channel,
@@ -653,15 +905,47 @@ void handle_button_cc_event(int num,int event) {
                            button_bank[current_keypad_page][num].velocity,
                            0
             );
+//            return (Event_t) {
+//                    .type = BUTTON_EVENT_NORMAL,
+//                    .num = num,
+//                    .event = BUTTON_RELEASED_EVENT
+//            };
             break;
     }
+}
+
+void handle_button_pressed_switch_mod(int num,int event) {
+     int event_temp = 0;
+    switch (num) {
+        case 1:
+            normal_mod_set_type = NORMALMOD_SET_PADPAGE;
+            break;
+        case 5:
+            normal_mod_set_type = NORMALMOD_SET_KNOBPAGE;
+            break;
+        case 4:
+            normal_mod_set_type = NORMALMOD_SET_TRACK_CONTROL;
+            break;
+        case 0:
+            normal_mod_set_type = NORMALMOD_SET_KEYPAGE;
+            break;
+        default:
+            normal_mod_set_type = NORMALMOD;
+            break;
+    }
+    Serial.printf("current mod:%d \n",normal_mod_set_type);
+}
+
+
+void handle_button_release_switch_mod(int num,int event) {
+    normal_mod_set_type = NORMALMOD;
 }
 
 //根据按钮编号执行不同操作
 //按钮1：选择设置PAD
 //按钮2：选择设置编码器
 //按钮3：选择设置按钮
-int menu_setting_mode = 0;
+
 void handle_button_menu_event(int num, int event) {
     // 检查按钮按下事件
     if (event == BUTTON_PRESSED_EVENT) {
@@ -711,7 +995,8 @@ void handle_encoder_menu_event(int num, int event){
         case 2:  // 操作KNOB的选择
             if (event == ENCODER_LEFT_EVENT) {
 
-            } else if (event == ENCODER_RIGHT_EVENT) {
+            }
+            else if (event == ENCODER_RIGHT_EVENT) {
 
             }
             printf("Current KNOB selected: %d\n", menu_knob_selected);
@@ -773,6 +1058,7 @@ void handle_encoder_setpage_event(int num, int event) {
             }
             else if (event == ENCODER_RIGHT_EVENT) {
                 //发送走带控制往右
+
             }
             break;
 
@@ -817,6 +1103,14 @@ void TaskReadEvent( void *pvParameters ){
             }
         }
 
+        //打印事件信息
+        Serial.print("Event type: ");
+        Serial.print(event_temp.type);
+        Serial.print(" Event num: ");
+        Serial.print(event_temp.num);
+        Serial.print(" Event event: ");
+        Serial.println(event_temp.event);
+
         //处理事件在这里，调用midi输出也是在这里。
         if(event_temp.type != -1){
             // 使用 sprintf 将 Event_t 的内容格式化并存储到字符串中
@@ -825,29 +1119,21 @@ void TaskReadEvent( void *pvParameters ){
             //处理按钮事件
             if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_PRESSED_EVENT){
                 pressed_time = millis();
-
+            }
+            if(event_temp.type == BUTTON_TYPE && event_temp.event == BUTTON_PRESSED_EVENT){
                 if(menu_flag){
                     handle_button_menu_event(event_temp.num, event_temp.event);
                 }
                 else{
                     //正常模式
+                    handle_button_pressed_switch_mod(event_temp.num, event_temp.event);
                     handle_button_cc_event(event_temp.num, event_temp.event);
                 }
             }
-            //处理键盘矩阵事件
-            else if(event_temp.type == KEYPAD_TYPE){
-                event_temp = handle_keypad_event(event_temp.num, event_temp.event);
+            //按钮释放事件，这里只为了还原翻页模式设定
+            if(event_temp.type == BUTTON_TYPE && event_temp.event == BUTTON_RELEASED_EVENT){
+                handle_button_release_switch_mod(event_temp.num, event_temp.event);
             }
-            //处理编码器事件
-            else if(event_temp.type == ENCODER_TYPE){
-                if(menu_flag){
-                    handle_encoder_menu_event(event_temp.num, event_temp.event);
-                }
-                else{
-                    handle_encoder_normal_event(event_temp.num, event_temp.event);
-                }
-            }
-
 
             //按钮释放事件处理，这里只处理菜单进入逻辑
             if(event_temp.type == BUTTON_TYPE && event_temp.num == 3 && event_temp.event == BUTTON_RELEASED_EVENT){
@@ -860,6 +1146,23 @@ void TaskReadEvent( void *pvParameters ){
                     menu_button_pressed = 0;
                 }
             }
+
+            //处理键盘矩阵事件
+            else if(event_temp.type == KEYPAD_TYPE){
+                handle_keypad_event(event_temp.num, event_temp.event);
+            }
+            //处理编码器事件
+            else if(event_temp.type == ENCODER_TYPE){
+                if(menu_flag){
+                    handle_encoder_menu_event(event_temp.num, event_temp.event);
+                }
+                else{
+                    if(normal_mod_set_type == NORMALMOD){
+                        event_temp = handle_encoder_normal_event(event_temp.num, event_temp.event);
+                    }
+                }
+            }
+
             //传递显示数据
             //获取互斥锁访问共享资源
             xSemaphoreTake(xMutex, portMAX_DELAY);
@@ -869,13 +1172,7 @@ void TaskReadEvent( void *pvParameters ){
             //释放
             xSemaphoreGive(xMutex);
 
-            //打印事件信息
-            Serial.print("Event type: ");
-            Serial.print(event_temp.type);
-            Serial.print(" Event num: ");
-            Serial.print(event_temp.num);
-            Serial.print(" Event event: ");
-            Serial.println(event_temp.event);
+
         }
 
         //delay(10);
